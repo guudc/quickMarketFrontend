@@ -1,0 +1,62 @@
+{
+  "Yaba": {
+    "2": 6000,
+    "4": 11000,
+    "6": 17000,
+    "unlimited": 19000,
+    "limits": {
+      "2": "Can only add 4 times",
+      "4": "Can only add 7 times",
+      "6": "Can only add 10 times",
+      "unlimited": "No limits"
+    }
+  },
+  "Ikeja": {
+    "2": 5500,
+    "4": 10000,
+    "6": 14000,
+    "unlimited": 19000,
+    "limits": {
+      "2": "Can only add 4 times",
+      "4": "Can only add 7 times",
+      "6": "Can only add 10 times",
+      "unlimited": "No limits"
+    }
+  },
+  "Surulere": {
+    "2": 6000,
+    "4": 11000,
+    "6": 16000,
+    "unlimited": 18000,
+    "limits": {
+      "2": "Can only add 4 times",
+      "4": "Can only add 7 times",
+      "6": "Can only add 10 times",
+      "unlimited": "No limits"
+    }
+  },
+  "Lekki Phase One": {
+    "2": 7500,
+    "4": 14000,
+    "6": 20500,
+    "unlimited": 25000,
+    "limits": {
+      "2": "Can only add 4 times",
+      "4": "Can only add 7 times",
+      "6": "Can only add 10 times",
+      "unlimited": "No limits"
+    }
+  },
+  "Lekki Phase Two": {
+    "2": 8500,
+    "4": 16000,
+    "6": 20500,
+    "unlimited": 30000,
+    "limits": {
+      "2": "Can only add 4 times",
+      "4": "Can only add 7 times",
+      "6": "Can only add 10 times",
+      "unlimited": "No limits"
+    }
+  }
+}
