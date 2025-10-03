@@ -14,6 +14,7 @@ import { FloatingChat } from "@/components/floating-chat"
 import { StickyCTA } from "@/components/sticky-cta"
 import { useState, useEffect } from "react"
 import { X } from "lucide-react"
+import { useUserData } from "@/hooks/use-user";
 
 interface LocationPopupProps {
   isOpen: boolean;
@@ -129,25 +130,27 @@ export default function Home() {
   const [showLocationPopup, setShowLocationPopup] = useState(false);
   const [userLocation, setUserLocation] = useState({ city: '', area: '' });
   const [isClient, setIsClient] = useState(false);
+  const {isLoggedIn} = useUserData()
 
   useEffect(() => {
     setIsClient(true);
     
     // Check if user has already selected location
     if (typeof window !== 'undefined') {
-      const savedCity = localStorage.getItem('selectedCity');
-      const savedArea = localStorage.getItem('selectedLocation');
+      if(!isLoggedIn) setShowLocationPopup(true); //show popup immediately
+      // const savedCity = localStorage.getItem('selectedCity');
+      // const savedArea = localStorage.getItem('selectedLocation');
       
-      if (savedCity && savedArea) {
-        setUserLocation({ city: savedCity, area: savedArea });
-      } else {
-        // Show popup after a short delay when page loads
-        const timer = setTimeout(() => {
-          setShowLocationPopup(true);
-        }, 1000);
+      // if (savedCity && savedArea) {
+      //   setUserLocation({ city: savedCity, area: savedArea });
+      // } else {
+      //   // Show popup after a short delay when page loads
+      //   const timer = setTimeout(() => {
+          
+      //   }, 1000);
         
-        return () => clearTimeout(timer);
-      }
+      //   return () => clearTimeout(timer);
+      //}
     }
   }, []);
 

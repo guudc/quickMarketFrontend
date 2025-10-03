@@ -11,8 +11,9 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Slider } from "@/components/ui/slider"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useToast } from "@/components/ui/use-toast"
-import type { SearchResult, SearchParams, Product } from "@/lib/search-types"
+import { useToast } from "@/hooks/use-toast"
+import { ToastContainer } from "@/components/ui/toast"
+import type { Product } from "@/lib/search-types"
 import { Search, Filter, X, TrendingUp, SlidersHorizontal, Grid3X3, List } from "lucide-react"
 
 interface CartItem {
@@ -21,139 +22,197 @@ interface CartItem {
   product: Product
 }
 
+interface Category {
+  name: string
+  slug: string
+  productCount: number
+}
+
 const sortOptions = [
-  { value: "relevance", label: "Relevance" },
+  { value: "name", label: "Name: A-Z" },
   { value: "price_asc", label: "Price: Low to High" },
   { value: "price_desc", label: "Price: High to Low" },
-  { value: "name_asc", label: "Name: A-Z" },
-  { value: "name_desc", label: "Name: Z-A" },
   { value: "stock", label: "Stock Availability" },
-  { value: "newest", label: "Newest First" },
-  { value: "popular", label: "Most Popular" },
 ]
 
 export default function SearchPage() {
   const searchParams = useSearchParams()
   const router = useRouter()
-  const { toast } = useToast()
+  const { toasts, addToast, removeToast } = useToast()
 
-  const [searchResult, setSearchResult] = useState<SearchResult | null>(null)
+  const [products, setProducts] = useState<Product[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
+  const [categoriesLoading, setCategoriesLoading] = useState(true)
   const [cart, setCart] = useState<CartItem[]>([])
   const [showFilters, setShowFilters] = useState(false)
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
 
   // Filter states
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([])
-  const [priceRange, setPriceRange] = useState<[number, number]>([0, 5000])
-  const [selectedAvailability, setSelectedAvailability] = useState<string[]>([])
-  const [sortBy, setSortBy] = useState<SearchParams["sortBy"]>("relevance")
+  const [selectedCategory, setSelectedCategory] = useState<string>("")
+  const [priceRange, setPriceRange] = useState<[number, number]>([0, 10000])
+  const [selectedAvailability, setSelectedAvailability] = useState<string>("")
+  const [sortBy, setSortBy] = useState<string>("name")
 
-  const query = searchParams.get("q") || ""
-  const selectedLocation = "Yaba" // This would come from user context
+  const query = searchParams.get("search") || ""
+  const selectedLocation = "Yaba"
 
   // Check if order window is open
   const isOrderWindowOpen = () => {
     const today = new Date().getDay()
-    return today === 0 || today === 1 // Sunday = 0, Monday = 1
+    return today === 0 || today === 1 || today === 2
   }
 
   const orderWindowOpen = isOrderWindowOpen()
 
-  const performSearch = useCallback(async () => {
+  // Fetch categories
+  const fetchCategories = async () => {
     try {
-      setLoading(true)
-
-      const params = new URLSearchParams({
-        ...(query && { query }),
-        location: selectedLocation,
-        ...(selectedCategories.length > 0 && { categories: selectedCategories.join(",") }),
-        priceMin: priceRange[0].toString(),
-        priceMax: priceRange[1].toString(),
-        ...(selectedAvailability.length > 0 && { availability: selectedAvailability.join(",") }),
-        sortBy: sortBy || "relevance",
-      })
-
-      const response = await fetch(process.env.NEXT_PUBLIC_API_BASE_URL + `/api/search?${params}`)
+      setCategoriesLoading(true)
+      const response = await fetch(process.env.NEXT_PUBLIC_API_BASE_URL + '/api/categories')
       const data = await response.json()
 
       if (data.success) {
-        setSearchResult(data.data)
+        setCategories(data.categories)
       } else {
         throw new Error(data.error)
       }
     } catch (error) {
-      console.error("Search error:", error)
-      toast({
-        title: "Search Error",
-        description: "Failed to perform search. Please try again.",
-        variant: "destructive",
+      console.error("Error fetching categories:", error)
+      addToast({
+        title: "Network error",
+        description: "Failed to load categories. Please try again.",
+        type: "error",
+      })
+    } finally {
+      setCategoriesLoading(false)
+    }
+  }
+
+  // Fetch products based on filters
+  const fetchProducts = useCallback(async () => {
+    try {
+      setLoading(true)
+
+      const params = new URLSearchParams({
+        ...(query && { search: query }),
+        ...(selectedCategory && { category: selectedCategory }),
+        ...(selectedAvailability && { availability: selectedAvailability }),
+        page: "1",
+        limit: "50"
+      })
+
+      const response = await fetch(process.env.NEXT_PUBLIC_API_BASE_URL + `/api/products?${params}`)
+      const data = await response.json()
+
+      if (data.success) {
+        setProducts(data.products)
+        
+        // Sort products based on selected sort option
+        let sortedProducts = [...data.products]
+        switch (sortBy) {
+          case "price_asc":
+            sortedProducts.sort((a, b) => parseFloat(a.base_price) - parseFloat(b.base_price))
+            break
+          case "price_desc":
+            sortedProducts.sort((a, b) => parseFloat(b.base_price) - parseFloat(a.base_price))
+            break
+          case "stock":
+            sortedProducts.sort((a, b) => b.stock_quantity - a.stock_quantity)
+            break
+          case "name":
+          default:
+            sortedProducts.sort((a, b) => a.name.localeCompare(b.name))
+            break
+        }
+        
+        // Filter by price range
+        sortedProducts = sortedProducts.filter(product => {
+          const price = parseFloat(product.base_price)
+          return price >= priceRange[0] && price <= priceRange[1]
+        })
+        
+        setProducts(sortedProducts)
+      } else {
+        throw new Error(data.error)
+      }
+    } catch (error) {
+      console.error("Error fetching products:", error)
+      addToast({
+        title: "Network error",
+        description: "Failed to load products. Please try again.",
+        type: "error",
       })
     } finally {
       setLoading(false)
     }
-  }, [query, selectedLocation, selectedCategories, priceRange, selectedAvailability, sortBy, toast])
+  }, [query, selectedCategory, selectedAvailability, sortBy, priceRange, addToast])
 
   useEffect(() => {
-    performSearch()
-  }, [performSearch])
-
-  // Initialize price range from filters
-  useEffect(() => {
-    if (searchResult?.filters.priceRange) {
-      setPriceRange([searchResult.filters.priceRange.min, searchResult.filters.priceRange.max])
+    const loadData = async () => {
+      await Promise.all([fetchCategories(), fetchProducts()])
     }
-  }, [searchResult?.filters.priceRange])
+    loadData()
+  }, [fetchProducts])
 
   const handleAddToCart = (productId: string, quantity: number) => {
-    const product = searchResult?.items.find((p) => p.id === productId)
+    const product = products.find((p) => p.id === productId)
     if (!product) return
 
     setCart((prevCart) => {
       const existingItem = prevCart.find((item) => item.productId === productId)
+      let newCart
       if (existingItem) {
-        return prevCart.map((item) =>
-          item.productId === productId ? { ...item, quantity: item.quantity + quantity } : item,
+        newCart = prevCart.map((item) =>
+          item.productId === productId ? { ...item, quantity: item.quantity + quantity } : item
         )
       } else {
-        return [...prevCart, { productId, quantity, product }]
+        newCart = [...prevCart, { productId, quantity, product }]
       }
+
+      // Save to localStorage
+      localStorage.setItem("quickmarket_cart", JSON.stringify(newCart))
+      return newCart
     })
 
-    toast({
+    addToast({
       title: "Added to cart",
-      description: `${quantity}kg of ${product.name} added to your cart.`,
+      description: `${quantity} of ${product.name} added to your cart.`,
     })
   }
 
   const handleSearch = (newQuery: string) => {
-    const params = new URLSearchParams(searchParams.toString())
+    const params = new URLSearchParams()
     if (newQuery) {
-      params.set("q", newQuery)
-    } else {
-      params.delete("q")
+      params.set("search", newQuery)
     }
     router.push(`/search?${params.toString()}`)
   }
 
   const clearAllFilters = () => {
-    setSelectedCategories([])
-    setSelectedAvailability([])
-    if (searchResult?.filters.priceRange) {
-      setPriceRange([searchResult.filters.priceRange.min, searchResult.filters.priceRange.max])
-    }
-    setSortBy("relevance")
+    setSelectedCategory("")
+    setSelectedAvailability("")
+    setPriceRange([0, 10000])
+    setSortBy("name")
   }
 
   const getTotalCartItems = () => {
     return cart.reduce((total, item) => total + item.quantity, 0)
   }
 
-  const hasActiveFilters =
-    selectedCategories.length > 0 ||
-    selectedAvailability.length > 0 ||
-    (searchResult?.filters.priceRange &&
-      (priceRange[0] !== searchResult.filters.priceRange.min || priceRange[1] !== searchResult.filters.priceRange.max))
+  const hasActiveFilters = selectedCategory || selectedAvailability || priceRange[0] > 0 || priceRange[1] < 10000
+
+  // Load cart from localStorage on mount
+  useEffect(() => {
+    const savedCart = localStorage.getItem("quickmarket_cart")
+    if (savedCart) {
+      try {
+        setCart(JSON.parse(savedCart))
+      } catch (error) {
+        console.error("Error parsing cart:", error)
+      }
+    }
+  }, [])
 
   return (
     <div className="min-h-screen bg-background">
@@ -161,7 +220,6 @@ export default function SearchPage() {
       <DashboardNavbar
         selectedLocation={selectedLocation}
         cartItemCount={getTotalCartItems()}
-        onSearch={handleSearch}
       />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -172,13 +230,9 @@ export default function SearchPage() {
               <h1 className="text-2xl font-bold text-foreground">
                 {query ? `Search Results for "${query}"` : "Browse Products"}
               </h1>
-              {searchResult && (
+              {products.length > 0 && (
                 <div className="flex items-center space-x-4 text-sm text-muted-foreground mt-1">
-                  <span>
-                    Showing {searchResult.items.length} of {searchResult.totalCount} results
-                  </span>
-                  <span>•</span>
-                  <span>{searchResult.searchTime}ms</span>
+                  <span>Showing {products.length} results</span>
                 </div>
               )}
             </div>
@@ -219,43 +273,6 @@ export default function SearchPage() {
               </Button>
             </div>
           </div>
-
-          {/* Typo Correction */}
-          {searchResult?.correctedQuery && (
-            <div className="mb-4">
-              <p className="text-sm text-muted-foreground">
-                Did you mean{" "}
-                <button
-                  onClick={() => handleSearch(searchResult.correctedQuery!)}
-                  className="text-primary hover:underline font-medium"
-                >
-                  "{searchResult.correctedQuery}"
-                </button>
-                ?
-              </p>
-            </div>
-          )}
-
-          {/* Search Suggestions */}
-          {searchResult?.suggestions && searchResult.suggestions.length > 0 && !query && (
-            <div className="mb-4">
-              <p className="text-sm text-muted-foreground mb-2">Popular searches:</p>
-              <div className="flex flex-wrap gap-2">
-                {searchResult.suggestions.map((suggestion, index) => (
-                  <Button
-                    key={index}
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleSearch(suggestion)}
-                    className="h-8 text-xs"
-                  >
-                    <TrendingUp className="h-3 w-3 mr-1" />
-                    {suggestion}
-                  </Button>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
 
         <div className="flex flex-col lg:flex-row gap-6">
@@ -280,7 +297,7 @@ export default function SearchPage() {
                 {/* Sort Options */}
                 <div>
                   <label className="text-sm font-medium mb-3 block">Sort By</label>
-                  <Select value={sortBy} onValueChange={(value) => setSortBy(value as SearchParams["sortBy"])}>
+                  <Select value={sortBy} onValueChange={setSortBy}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
@@ -295,27 +312,23 @@ export default function SearchPage() {
                 </div>
 
                 {/* Categories */}
-                {searchResult?.filters.categories && (
+                {!categoriesLoading && categories.length > 0 && (
                   <div>
                     <label className="text-sm font-medium mb-3 block">Categories</label>
                     <div className="space-y-2">
-                      {searchResult.filters.categories.map((category) => (
-                        <div key={category.value} className="flex items-center space-x-2">
+                      {categories.map((category) => (
+                        <div key={category.slug} className="flex items-center space-x-2">
                           <Checkbox
-                            id={category.value}
-                            checked={selectedCategories.includes(category.value)}
+                            id={category.slug}
+                            checked={selectedCategory === category.slug}
                             onCheckedChange={(checked) => {
-                              if (checked) {
-                                setSelectedCategories([...selectedCategories, category.value])
-                              } else {
-                                setSelectedCategories(selectedCategories.filter((c) => c !== category.value))
-                              }
+                              setSelectedCategory(checked ? category.slug : "")
                             }}
                           />
-                          <label htmlFor={category.value} className="text-sm flex-1 cursor-pointer">
-                            {category.label}
+                          <label htmlFor={category.slug} className="text-sm flex-1 cursor-pointer">
+                            {category.name}
                           </label>
-                          <span className="text-xs text-muted-foreground">({category.count})</span>
+                          <span className="text-xs text-muted-foreground">({category.productCount})</span>
                         </div>
                       ))}
                     </div>
@@ -323,49 +336,50 @@ export default function SearchPage() {
                 )}
 
                 {/* Price Range */}
-                {searchResult?.filters.priceRange && (
-                  <div>
-                    <label className="text-sm font-medium mb-3 block">
-                      Price Range (₦{priceRange[0].toLocaleString()} - ₦{priceRange[1].toLocaleString()})
-                    </label>
-                    <Slider
-                      value={priceRange}
-                      onValueChange={(value) => setPriceRange(value as [number, number])}
-                      max={searchResult.filters.priceRange.max}
-                      min={searchResult.filters.priceRange.min}
-                      step={50}
-                      className="w-full"
-                    />
-                  </div>
-                )}
+                <div>
+                  <label className="text-sm font-medium mb-3 block">
+                    Price Range (₦{priceRange[0].toLocaleString()} - ₦{priceRange[1].toLocaleString()})
+                  </label>
+                  <Slider
+                    value={priceRange}
+                    onValueChange={(value) => setPriceRange(value as [number, number])}
+                    max={10000}
+                    min={0}
+                    step={100}
+                    className="w-full"
+                  />
+                </div>
 
                 {/* Availability */}
-                {searchResult?.filters.availability && (
-                  <div>
-                    <label className="text-sm font-medium mb-3 block">Availability</label>
-                    <div className="space-y-2">
-                      {searchResult.filters.availability.map((status) => (
-                        <div key={status.value} className="flex items-center space-x-2">
-                          <Checkbox
-                            id={status.value}
-                            checked={selectedAvailability.includes(status.value)}
-                            onCheckedChange={(checked) => {
-                              if (checked) {
-                                setSelectedAvailability([...selectedAvailability, status.value])
-                              } else {
-                                setSelectedAvailability(selectedAvailability.filter((s) => s !== status.value))
-                              }
-                            }}
-                          />
-                          <label htmlFor={status.value} className="text-sm flex-1 cursor-pointer">
-                            {status.label}
-                          </label>
-                          <span className="text-xs text-muted-foreground">({status.count})</span>
-                        </div>
-                      ))}
+                <div>
+                  <label className="text-sm font-medium mb-3 block">Availability</label>
+                  <div className="space-y-2">
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="available"
+                        checked={selectedAvailability === "available"}
+                        onCheckedChange={(checked) => {
+                          setSelectedAvailability(checked ? "available" : "")
+                        }}
+                      />
+                      <label htmlFor="available" className="text-sm flex-1 cursor-pointer">
+                        In Stock
+                      </label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="out_of_stock"
+                        checked={selectedAvailability === "out_of_stock"}
+                        onCheckedChange={(checked) => {
+                          setSelectedAvailability(checked ? "out_of_stock" : "")
+                        }}
+                      />
+                      <label htmlFor="out_of_stock" className="text-sm flex-1 cursor-pointer">
+                        Out of Stock
+                      </label>
                     </div>
                   </div>
-                )}
+                </div>
               </CardContent>
             </Card>
           </div>
@@ -389,11 +403,11 @@ export default function SearchPage() {
                   </Card>
                 ))}
               </div>
-            ) : searchResult && searchResult.items.length > 0 ? (
+            ) : products.length > 0 ? (
               <div
                 className={viewMode === "grid" ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6" : "space-y-4"}
               >
-                {searchResult.items.map((product) => (
+                {products.map((product:any) => (
                   <ProductCard
                     key={product.id}
                     product={product}
@@ -421,6 +435,7 @@ export default function SearchPage() {
           </div>
         </div>
       </div>
+      <ToastContainer toasts={toasts} onClose={removeToast} />
     </div>
   )
 }

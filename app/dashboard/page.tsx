@@ -50,7 +50,9 @@ export default function DashboardPage() {
   const fetchCategories = async () => {
     try {
       setCategoriesLoading(true);
-      const response = await fetch(process.env.NEXT_PUBLIC_API_BASE_URL + '/api/categories');
+      const response = await fetch(
+        process.env.NEXT_PUBLIC_API_BASE_URL + "/api/categories"
+      );
       const data = await response.json();
 
       if (data.success) {
@@ -70,18 +72,20 @@ export default function DashboardPage() {
     try {
       setLoading(true);
       const params = new URLSearchParams({
-        ...(selectedCategory !== "All Items" && { 
-          category: selectedCategory.toLowerCase().replace(/\s+/g, '-') 
+        ...(selectedCategory !== "All Items" && {
+          category: selectedCategory.toLowerCase().replace(/\s+/g, "-"),
         }),
         ...(searchQuery && { search: searchQuery }),
       });
 
-      const response = await fetch(process.env.NEXT_PUBLIC_API_BASE_URL + `/api/products?${params}`);
+      const response = await fetch(
+        process.env.NEXT_PUBLIC_API_BASE_URL + `/api/products?${params}`
+      );
       const data = await response.json();
       if (data) {
         setProducts(data.products);
       } else {
-        setProducts([])
+        setProducts([]);
       }
     } catch (error) {
       console.error("Error fetching products:", error);
@@ -109,7 +113,13 @@ export default function DashboardPage() {
       try {
         const savedLocation = localStorage.getItem("selectedLocation");
         if (savedLocation) {
-          const locationName = savedLocation;
+          let locationName;
+          try {
+            const parsed = JSON.parse(savedLocation);
+            locationName = parsed?.location || savedLocation;
+          } catch {
+            locationName = savedLocation;
+          }
           setSelectedLocation(locationName || "Yaba");
         }
       } catch (error) {
@@ -150,16 +160,19 @@ export default function DashboardPage() {
 
   // Prepare categories for display with "All Items" option
   const displayCategories = [
-    { 
-      name: "All Items", 
-      slug: "all", 
-      productCount: categories.reduce((total, cat) => total + cat.productCount, 0) 
+    {
+      name: "All Items",
+      slug: "all",
+      productCount: categories.reduce(
+        (total, cat) => total + cat.productCount,
+        0
+      ),
     },
-    ...categories.map(cat => ({
+    ...categories.map((cat) => ({
       name: cat.name,
       slug: cat.slug,
-      productCount: cat.productCount
-    }))
+      productCount: cat.productCount,
+    })),
   ];
 
   const handleAddToCart = (productId: string, quantity: number) => {
@@ -279,11 +292,11 @@ export default function DashboardPage() {
           </div>
           {isLoggedIn && user && !user.emailVerified && (
             <div className="flex flex-wrap items-center justify-center gap-4 text-sm bg-red-100 px-4 py-2 rounded-md font-bold text-red-900">
-             <p className="font-medium text-center">
-                    Please verify your email address to place orders.
-                  </p>
-                  <Link href={"/auth/verify"}>Send Email</Link>
-            </div>  
+              <p className="font-medium text-center">
+                Please verify your email address to place orders.
+              </p>
+              <Link href={"/auth/verify"}>Send Email</Link>
+            </div>
           )}
 
           {/* Order Window Reminder Banner */}
@@ -303,87 +316,105 @@ export default function DashboardPage() {
         </div>
 
         {/* Subscription Status & Slot Management */}
-        {isLoggedIn && user && subscription && (<div className="mb-8">
-          <Card className="bg-gradient-to-r from-primary/5 to-primary/10 border-primary/20">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-foreground">
-                  {subscription?.status}
-                </h3>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => router.push("/subscribe")}
-                >
-                  Upgrade Plan
-                </Button>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-primary">{subscription?.totalSlots}</div>
-                  <div className="text-sm text-muted-foreground">
-                    Total Delivery Slots
+        {isLoggedIn && user && subscription && (
+          <div className="mb-8">
+            <Card className="bg-gradient-to-r from-primary/5 to-primary/10 border-primary/20">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-foreground">
+                    {subscription?.status}
+                  </h3>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => router.push("/subscribe")}
+                  >
+                    Upgrade Plan
+                  </Button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-primary">
+                      {subscription?.totalSlots}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      Total Delivery Slots
+                    </div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-green-600">
+                      {subscription?.slotsUsed}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      Delivery Slots Used
+                    </div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-orange-600">
+                      {subscription?.slotsRemaining}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      Delivery Slots Remaining
+                    </div>
                   </div>
                 </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-green-600">{subscription?.slotsUsed}</div>
-                  <div className="text-sm text-muted-foreground">
-                    Delivery Slots Used
+                <div className="mt-4">
+                  <div className="flex justify-between text-sm text-muted-foreground mb-1">
+                    <span>Delivery Slot Usage</span>
+                    <span>
+                      {subscription?.slotsUsed}/{subscription?.totalSlots} slots
+                    </span>
                   </div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-orange-600">{subscription?.slotsRemaining}</div>
-                  <div className="text-sm text-muted-foreground">
-                    Delivery Slots Remaining
-                  </div>
-                </div>
-              </div>
-              <div className="mt-4">
-                <div className="flex justify-between text-sm text-muted-foreground mb-1">
-                  <span>Delivery Slot Usage</span>
-                  <span>{subscription?.slotsUsed}/{subscription?.totalSlots} slots</span>
-                </div>
-                <div className="w-full bg-secondary rounded-full h-2">
+                  <div className="w-full bg-secondary rounded-full h-2">
                     <div
-                    className="bg-primary h-2 rounded-full"
-                    style={{
-                      width: `${subscription?.totalSlots
-                      ? Math.round(
-                        (subscription.slotsUsed / subscription.totalSlots) * 100
-                        )
-                      : 0}%`,
-                    }}
+                      className="bg-primary h-2 rounded-full"
+                      style={{
+                        width: `${
+                          subscription?.totalSlots
+                            ? Math.round(
+                                (subscription.slotsUsed /
+                                  subscription.totalSlots) *
+                                  100
+                              )
+                            : 0
+                        }%`,
+                      }}
                     ></div>
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>)}
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         {/* Category Filter Section */}
         <div className="mb-8">
           <div className="flex space-x-2 overflow-x-auto pb-2">
-            {categoriesLoading ? (
-              // Skeleton loading for categories
-              Array.from({ length: 6 }).map((_, i) => (
-                <Skeleton key={i} className="h-10 w-24 rounded-md" />
-              ))
-            ) : (
-              displayCategories.filter(category => category.productCount > 0).map((category) => (
-                <Button
-                  key={category.slug}
-                  variant={selectedCategory === category.name ? "default" : "outline"}
-                  onClick={() => setSelectedCategory(category.slug)}
-                  className="whitespace-nowrap flex items-center gap-2"
-                  size="sm"
-                >
-                  {category.name}
-                  <Badge variant="secondary" className="text-xs">
-                    {category.productCount}
-                  </Badge>
-                </Button>
-              ))
-            )}
+            {categoriesLoading
+              ? // Skeleton loading for categories
+                Array.from({ length: 6 }).map((_, i) => (
+                  <Skeleton key={i} className="h-10 w-24 rounded-md" />
+                ))
+              : displayCategories
+                  .filter((category) => category.productCount > 0)
+                  .map((category) => (
+                    <Button
+                      key={category.slug}
+                      variant={
+                        selectedCategory === category.name
+                          ? "default"
+                          : "outline"
+                      }
+                      onClick={() => setSelectedCategory(category.slug)}
+                      className="whitespace-nowrap flex items-center gap-2"
+                      size="sm"
+                    >
+                      {category.name}
+                      <Badge variant="secondary" className="text-xs">
+                        {category.productCount}
+                      </Badge>
+                    </Button>
+                  ))}
           </div>
         </div>
 

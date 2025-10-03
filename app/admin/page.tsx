@@ -1,301 +1,407 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Skeleton } from "@/components/ui/skeleton"
-import { useToast } from "@/components/ui/use-toast"
-import type { DashboardStats } from "@/lib/admin-types"
-import { ShoppingCart, Users, DollarSign, Package, AlertTriangle, TrendingUp, Eye, Clock } from "lucide-react"
+import { useState, useEffect } from "react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useToast } from "@/hooks/use-toast";
+import { ToastContainer } from "@/components/ui/toast";
+import { useAdminData } from "@/hooks/use-admin";
+import {
+  Package,
+  Users,
+  ShoppingCart,
+  DollarSign,
+  TrendingUp,
+  MapPin,
+} from "lucide-react";
 
-export default function AdminDashboard() {
-  const [stats, setStats] = useState<DashboardStats | null>(null)
-  const [loading, setLoading] = useState(true)
-  const { toast } = useToast()
+interface DashboardStats {
+  overview: {
+    totalOrders: number;
+    totalSubscriptions: number;
+    totalRevenue: string;
+    todayRevenue: string;
+  };
+  ordersByStatus: Record<string, number>;
+  subscriptionsByStatus: Record<string, number>;
+}
 
-  useEffect(() => {
-    fetchDashboardStats()
-  }, [])
+interface RevenueData {
+  totalRevenue: string;
+  totalSubscriptions: number;
+  revenueByLocation: Array<{
+    location: string;
+    total: number;
+    count: number;
+  }>;
+  revenueByPackage: Array<{
+    package: string;
+    total: number;
+    count: number;
+  }>;
+}
 
+const locations = [
+  "Yaba",
+  "Lekki",
+  "Ikeja",
+  "Surulere",
+  "Victoria Island"
+];
+
+export default function AdminDashboardPage() {
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [revenueData, setRevenueData] = useState<RevenueData | null>(null);
+  const [selectedLocation, setSelectedLocation] = useState<string>("all");
+  const [loading, setLoading] = useState(true);
+  const [revenueLoading, setRevenueLoading] = useState(true);
+  const { toasts, addToast, removeToast } = useToast();
+  const { isLoggedIn, admin, token } = useAdminData();
+
+  // Fetch dashboard stats
   const fetchDashboardStats = async () => {
     try {
-      setLoading(true)
-      const response = await fetch(process.env.NEXT_PUBLIC_API_BASE_URL + "/api/admin/dashboard-summary")
-      const data = await response.json()
+      setLoading(true);
+      const response = await fetch(
+        process.env.NEXT_PUBLIC_API_BASE_URL + "/api/admin/dashboard/stats",
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+             "ngrok-skip-browser-warning": "true"
+          },
+        }
+      );
+
+      const data = await response.json();
 
       if (data.success) {
-        setStats(data.data)
+        setStats(data.data);
       } else {
-        throw new Error(data.error)
+        throw new Error(data.error || "Failed to fetch dashboard stats");
       }
     } catch (error) {
-      console.error("Error fetching dashboard stats:", error)
-      toast({
+      console.error("Error fetching dashboard stats:", error);
+      addToast({
+        type: "error",
         title: "Error",
         description: "Failed to load dashboard statistics",
-        variant: "destructive",
-      })
+      });
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "healthy":
-        return "bg-green-500"
-      case "warning":
-        return "bg-yellow-500"
-      case "error":
-        return "bg-red-500"
-      default:
-        return "bg-gray-500"
+  // Fetch revenue data
+  const fetchRevenueData = async (location: string = "all") => {
+    try {
+      setRevenueLoading(true);
+      const params = new URLSearchParams();
+      if (location !== "all") {
+        params.append("location", location.toLowerCase());
+      }
+
+      const response = await fetch(
+        process.env.NEXT_PUBLIC_API_BASE_URL + `/api/admin/revenue?${params}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+            "ngrok-skip-browser-warning": "true"
+          },
+        }
+      );
+
+      const data = await response.json();
+
+      if (data.success) {
+        setRevenueData(data.data);
+      } else {
+        throw new Error(data.error || "Failed to fetch revenue data");
+      }
+    } catch (error) {
+      console.error("Error fetching revenue data:", error);
+      addToast({
+        type: "error",
+        title: "Error",
+        description: "Failed to load revenue data",
+      });
+    } finally {
+      setRevenueLoading(false);
     }
-  }
+  };
 
-  const getOrderStatusColor = (status: string) => {
-    switch (status) {
-      case "delivered":
-        return "text-green-600 bg-green-50"
-      case "out_for_delivery":
-        return "text-blue-600 bg-blue-50"
-      case "confirmed":
-        return "text-yellow-600 bg-yellow-50"
-      case "pending":
-        return "text-orange-600 bg-orange-50"
-      case "cancelled":
-        return "text-red-600 bg-red-50"
-      default:
-        return "text-gray-600 bg-gray-50"
+  // Load initial data
+  useEffect(() => {
+    if (isLoggedIn) {
+      Promise.all([fetchDashboardStats(), fetchRevenueData()]);
     }
-  }
+  }, [isLoggedIn]);
 
-  if (loading) {
+  // Refresh revenue data when location changes
+  useEffect(() => {
+    if (isLoggedIn) {
+      fetchRevenueData(selectedLocation);
+    }
+  }, [selectedLocation, isLoggedIn]);
+
+  const formatCurrency = (amount: string | number) => {
+    const numAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
+    return new Intl.NumberFormat('en-NG', {
+      style: 'currency',
+      currency: 'NGN',
+      minimumFractionDigits: 2,
+    }).format(numAmount);
+  };
+
+  if (!isLoggedIn) {
     return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-gray-600">Welcome to Quick Market Admin Panel</p>
-        </div>
-
-        {/* Loading skeleton */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Card key={i}>
-              <CardContent className="p-6">
-                <Skeleton className="h-4 w-20 mb-2" />
-                <Skeleton className="h-8 w-16 mb-1" />
-                <Skeleton className="h-3 w-24" />
-              </CardContent>
-            </Card>
-          ))}
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading dashboard...</p>
         </div>
       </div>
-    )
-  }
-
-  if (!stats) {
-    return (
-      <div className="text-center py-12">
-        <p className="text-gray-500">Failed to load dashboard data</p>
-        <Button onClick={fetchDashboardStats} className="mt-4">
-          Retry
-        </Button>
-      </div>
-    )
+    );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-gray-600">Welcome to Quick Market Admin Panel</p>
-      </div>
-
-      {/* Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Total Orders</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.totalOrders.today}</p>
-                <p className="text-xs text-gray-500">Today</p>
-              </div>
-              <ShoppingCart className="h-8 w-8 text-primary" />
+      <div className="bg-white border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
+              <p className="text-gray-600 mt-1">
+                Welcome back, {admin?.firstName} {admin?.lastName}
+              </p>
             </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Active Subscriptions</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.activeSubscriptions}</p>
-                <p className="text-xs text-green-600 flex items-center">
-                  <TrendingUp className="h-3 w-3 mr-1" />
-                  +12% from last week
-                </p>
-              </div>
-              <Users className="h-8 w-8 text-primary" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Revenue Today</p>
-                <p className="text-2xl font-bold text-gray-900">₦{stats.totalRevenue.today.toLocaleString()}</p>
-                <p className="text-xs text-gray-500">₦{stats.totalRevenue.thisWeek.toLocaleString()} this week</p>
-              </div>
-              <DollarSign className="h-8 w-8 text-primary" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Pending Orders</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.pendingOrders}</p>
-                <p className="text-xs text-orange-600">Requires attention</p>
-              </div>
-              <Clock className="h-8 w-8 text-primary" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Out of Stock</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.outOfStockItems}</p>
-                <p className="text-xs text-red-600">Items need restocking</p>
-              </div>
-              <Package className="h-8 w-8 text-primary" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Active Users</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.activeUsers}</p>
-                <p className="text-xs text-gray-500">Registered customers</p>
-              </div>
-              <Users className="h-8 w-8 text-primary" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Recent Orders */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              Recent Orders
-              <Button variant="outline" size="sm">
-                <Eye className="h-4 w-4 mr-2" />
-                View All
-              </Button>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {stats.recentOrders.slice(0, 5).map((order) => (
-                <div key={order.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div className="flex-1">
-                    <p className="font-medium text-sm">{order.id}</p>
-                    <p className="text-xs text-gray-600">{order.customerName}</p>
-                    <p className="text-xs text-gray-500">₦{order.totalAmount.toLocaleString()}</p>
-                  </div>
-                  <Badge className={getOrderStatusColor(order.status)}>{order.status.replace("_", " ")}</Badge>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Low Stock Alerts */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <AlertTriangle className="h-5 w-5 text-orange-500" />
-                <span>Low Stock Alerts</span>
-              </div>
-              <Badge variant="outline">{stats.lowStockAlerts.length}</Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {stats.lowStockAlerts.slice(0, 5).map((alert) => (
-                <div key={alert.productId} className="flex items-center justify-between p-3 bg-orange-50 rounded-lg">
-                  <div className="flex-1">
-                    <p className="font-medium text-sm">{alert.productName}</p>
-                    <p className="text-xs text-gray-600">
-                      {alert.location} • {alert.category}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-medium text-orange-600">{alert.currentStock} left</p>
-                    <p className="text-xs text-gray-500">Min: {alert.minimumStock}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* System Status */}
-      <Card>
-        <CardHeader>
-          <CardTitle>System Status</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="flex items-center space-x-3">
-              <div className={`w-3 h-3 rounded-full ${getStatusColor(stats.systemStatus.database)}`} />
-              <div>
-                <p className="text-sm font-medium">Database</p>
-                <p className="text-xs text-gray-500 capitalize">{stats.systemStatus.database}</p>
-              </div>
-            </div>
-            <div className="flex items-center space-x-3">
-              <div className={`w-3 h-3 rounded-full ${getStatusColor(stats.systemStatus.paymentGateway)}`} />
-              <div>
-                <p className="text-sm font-medium">Payment Gateway</p>
-                <p className="text-xs text-gray-500 capitalize">{stats.systemStatus.paymentGateway}</p>
-              </div>
-            </div>
-            <div className="flex items-center space-x-3">
-              <div className={`w-3 h-3 rounded-full ${getStatusColor(stats.systemStatus.deliverySystem)}`} />
-              <div>
-                <p className="text-sm font-medium">Delivery System</p>
-                <p className="text-xs text-gray-500 capitalize">{stats.systemStatus.deliverySystem}</p>
-              </div>
-            </div>
-            <div className="flex items-center space-x-3">
-              <div className={`w-3 h-3 rounded-full ${getStatusColor(stats.systemStatus.notifications)}`} />
-              <div>
-                <p className="text-sm font-medium">Notifications</p>
-                <p className="text-xs text-gray-500 capitalize">{stats.systemStatus.notifications}</p>
-              </div>
+            
+            {/* Location Filter */}
+            <div className="mt-4 sm:mt-0">
+              <Select value={selectedLocation} onValueChange={setSelectedLocation}>
+                <SelectTrigger className="w-full sm:w-48">
+                  <MapPin className="h-4 w-4 mr-2" />
+                  <SelectValue placeholder="Select Location" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Locations</SelectItem>
+                  {locations.map((location) => (
+                    <SelectItem key={location} value={location.toLowerCase()}>
+                      {location}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {/* Overview Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          {/* Total Revenue Card */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+              <DollarSign className="h-4 w-4 text-green-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {loading ? (
+                  <div className="h-8 bg-gray-200 rounded animate-pulse"></div>
+                ) : (
+                  formatCurrency(stats?.overview.totalRevenue || 0)
+                )}
+              </div>
+              <p className="text-xs text-gray-600 mt-1">
+                {selectedLocation === "all" ? "All locations" : selectedLocation}
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Today's Revenue Card */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Today's Revenue</CardTitle>
+              <TrendingUp className="h-4 w-4 text-blue-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {loading ? (
+                  <div className="h-8 bg-gray-200 rounded animate-pulse"></div>
+                ) : (
+                  formatCurrency(stats?.overview.todayRevenue || 0)
+                )}
+              </div>
+              <p className="text-xs text-gray-600 mt-1">Today's earnings</p>
+            </CardContent>
+          </Card>
+
+          {/* Total Subscriptions Card */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Subscriptions</CardTitle>
+              <Users className="h-4 w-4 text-purple-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {loading ? (
+                  <div className="h-8 bg-gray-200 rounded animate-pulse"></div>
+                ) : (
+                  stats?.overview.totalSubscriptions || 0
+                )}
+              </div>
+              <p className="text-xs text-gray-600 mt-1">
+                Active: {stats?.subscriptionsByStatus?.active || 0}
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Total Orders Card */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Orders</CardTitle>
+              <ShoppingCart className="h-4 w-4 text-orange-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {loading ? (
+                  <div className="h-8 bg-gray-200 rounded animate-pulse"></div>
+                ) : (
+                  stats?.overview.totalOrders || 0
+                )}
+              </div>
+              <p className="text-xs text-gray-600 mt-1">All time orders</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Revenue by Location */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Revenue by Location</CardTitle>
+              <CardDescription>
+                Revenue distribution across locations
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {revenueLoading ? (
+                <div className="space-y-3">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <div key={i} className="flex justify-between items-center">
+                      <div className="h-4 bg-gray-200 rounded animate-pulse w-24"></div>
+                      <div className="h-4 bg-gray-200 rounded animate-pulse w-16"></div>
+                    </div>
+                  ))}
+                </div>
+              ) : revenueData?.revenueByLocation && revenueData.revenueByLocation.length > 0 ? (
+                <div className="space-y-4">
+                  {revenueData.revenueByLocation.map((location, index) => (
+                    <div key={index} className="flex justify-between items-center">
+                      <div className="flex items-center space-x-2">
+                        <MapPin className="h-4 w-4 text-gray-400" />
+                        <span className="font-medium capitalize">{location.location}</span>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-bold">{formatCurrency(location.total)}</div>
+                        <div className="text-sm text-gray-500">{location.count} subscriptions</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <Package className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                  <p>No revenue data available</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Revenue by Package */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Revenue by Package</CardTitle>
+              <CardDescription>
+                Revenue distribution by subscription packages
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {revenueLoading ? (
+                <div className="space-y-3">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <div key={i} className="flex justify-between items-center">
+                      <div className="h-4 bg-gray-200 rounded animate-pulse w-32"></div>
+                      <div className="h-4 bg-gray-200 rounded animate-pulse w-16"></div>
+                    </div>
+                  ))}
+                </div>
+              ) : revenueData?.revenueByPackage && revenueData.revenueByPackage.length > 0 ? (
+                <div className="space-y-4">
+                  {revenueData.revenueByPackage.map((pkg, index) => (
+                    <div key={index} className="flex justify-between items-center">
+                      <div className="flex items-center space-x-2">
+                        <Package className="h-4 w-4 text-gray-400" />
+                        <span className="font-medium">{pkg.package}</span>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-bold">{formatCurrency(pkg.total)}</div>
+                        <div className="text-sm text-gray-500">{pkg.count} subscriptions</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <Users className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                  <p>No package revenue data available</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Quick Stats Summary */}
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle>Quick Stats Summary</CardTitle>
+            <CardDescription>
+              Overview of your business performance
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="text-center p-4 bg-gray-50 rounded-lg">
+                <div className="text-2xl font-bold text-primary">
+                  {stats?.overview.totalSubscriptions || 0}
+                </div>
+                <div className="text-sm text-gray-600">Total Subscriptions</div>
+              </div>
+              <div className="text-center p-4 bg-gray-50 rounded-lg">
+                <div className="text-2xl font-bold text-green-600">
+                  {stats?.subscriptionsByStatus?.active || 0}
+                </div>
+                <div className="text-sm text-gray-600">Active Subscriptions</div>
+              </div>
+              <div className="text-center p-4 bg-gray-50 rounded-lg">
+                <div className="text-2xl font-bold text-orange-600">
+                  {stats?.overview.totalOrders || 0}
+                </div>
+                <div className="text-sm text-gray-600">Total Orders</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <ToastContainer toasts={toasts} onClose={removeToast} />
     </div>
-  )
+  );
 }
